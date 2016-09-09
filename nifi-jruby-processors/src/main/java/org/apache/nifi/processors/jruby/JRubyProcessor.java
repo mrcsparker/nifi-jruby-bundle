@@ -18,9 +18,11 @@ package org.apache.nifi.processors.jruby;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.Validator;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.*;
 import org.apache.nifi.annotation.behavior.ReadsAttribute;
 import org.apache.nifi.annotation.behavior.ReadsAttributes;
@@ -32,18 +34,27 @@ import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.jruby.embed.LocalVariableBehavior;
+import org.jruby.embed.ScriptingContainer;
 
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Tags({"script", "execute", "jruby"})
 @CapabilityDescription("Execute a JRuby script using a flow file and a process session.")
 @SeeAlso({})
 @ReadsAttributes({@ReadsAttribute(attribute="", description="")})
 @WritesAttributes({@WritesAttribute(attribute="", description="")})
-public class JRubyProcessor extends AbstractProcessor {
+public class JRubyProcessor extends AbstractSessionFactoryProcessor {
+
+
+    protected BlockingQueue<ScriptingContainer> engineQ = null;
+    private Boolean showLineNumbers = false;
 
     private List<PropertyDescriptor> descriptors;
     private Set<Relationship> relationships;
@@ -82,6 +93,16 @@ public class JRubyProcessor extends AbstractProcessor {
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
 
+    public static final PropertyDescriptor SHOW_LINE_NUMBERS = new PropertyDescriptor.Builder()
+            .name("Show line numbers")
+            .description("If there is an error, show the line number for the error")
+            .required(true)
+            .allowableValues("true", "false")
+            .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
+            .defaultValue("false")
+            .expressionLanguageSupported(false)
+            .build();
+
     public static final PropertyDescriptor LOAD_PATHS = new PropertyDescriptor.Builder()
             .name("Additional load paths for ruby gems")
             .description("Comma-separated list of paths to files and/or directories which contain libraries required by the script.")
@@ -98,6 +119,7 @@ public class JRubyProcessor extends AbstractProcessor {
         descriptors.add(SCRIPT_FILE);
         descriptors.add(SCRIPT_BODY);
         descriptors.add(JRUBY_HOME);
+        descriptors.add(SHOW_LINE_NUMBERS);
         descriptors.add(LOAD_PATHS);
         this.descriptors = Collections.unmodifiableList(descriptors);
 
@@ -118,20 +140,88 @@ public class JRubyProcessor extends AbstractProcessor {
         return descriptors;
     }
 
+
     @OnScheduled
     public void setup(final ProcessContext context) {
+        int maxTasks = context.getMaxConcurrentTasks();
+        setupScriptingContainers(context, maxTasks);
+    }
 
+    protected void setupScriptingContainers(final ProcessContext context, int numberOfContainers) {
+        engineQ = new LinkedBlockingQueue<>(numberOfContainers);
+        ClassLoader originalContextClassLoader = Thread.currentThread().getContextClassLoader();
+        try {
+            ComponentLog log = getLogger();
+
+            for (int i = 0; i < numberOfContainers; i++) {
+                ScriptingContainer scriptingContainer = setupScriptingContainer(context);
+                if (!engineQ.offer(scriptingContainer)) {
+                    log.error("Error adding JRuby script container");
+                }
+
+            }
+        } finally {
+            // Restore original context class loader
+            Thread.currentThread().setContextClassLoader(originalContextClassLoader);
+        }
+    }
+
+    protected ScriptingContainer setupScriptingContainer(final ProcessContext context) {
+        ScriptingContainer scriptingContainer = new ScriptingContainer(LocalVariableBehavior.PERSISTENT);
+
+        // Change JRUBY_HOME location
+        String jrubyHome = context.getProperty(JRUBY_HOME).getValue();
+        if (!StringUtils.isEmpty(jrubyHome)) {
+            scriptingContainer.setHomeDirectory(jrubyHome);
+        }
+
+        // Show line numbers
+        showLineNumbers = context.getProperty(SHOW_LINE_NUMBERS).asBoolean();
+
+        // Add additional library paths
+        String loadPath = context.getProperty(LOAD_PATHS).getValue();
+        if (!StringUtils.isEmpty(loadPath)) {
+            String loadPaths[] = loadPath.split(",");
+            scriptingContainer.setLoadPaths(Arrays.asList(loadPaths));
+        }
+
+        return scriptingContainer;
     }
 
     @Override
-    public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException {
-        FlowFile flowFile = session.get();
-        if ( flowFile == null ) {
-            return;
-        }
-        // TODO implement
+    public void onTrigger(ProcessContext processContext, ProcessSessionFactory processSessionFactory) throws ProcessException {
+        ProcessSession session = processSessionFactory.createSession();
+        ComponentLog log = getLogger();
 
-        System.out.println("Received a flow file");
-        session.transfer(flowFile, REL_SUCCESS);
+        ScriptingContainer scriptingContainer = engineQ.poll();
+
+        try {
+
+            try {
+                scriptingContainer.put("session", session);
+                scriptingContainer.put("context", processContext);
+                scriptingContainer.put("log", log);
+                scriptingContainer.put("REL_SUCCESS", REL_SUCCESS);
+                scriptingContainer.put("REL_FAILURE", REL_FAILURE);
+
+                session.commit();
+            } catch (Exception e) {
+                throw new ProcessException(e);
+            }
+        } catch (final Throwable t) {
+            getLogger().error("{} failed to process due to {}; rolling back session", new Object[]{this, t});
+            session.rollback(true);
+            throw t;
+        } finally {
+            engineQ.offer(scriptingContainer);
+        }
+
+    }
+
+    @OnStopped
+    public void stop() {
+        if (engineQ != null) {
+            engineQ.clear();
+        }
     }
 }
