@@ -36,6 +36,7 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.jruby.embed.LocalVariableBehavior;
 import org.jruby.embed.ScriptingContainer;
+import org.jruby.javasupport.JavaEmbedUtils;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -58,6 +59,8 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
 
     private List<PropertyDescriptor> descriptors;
     private Set<Relationship> relationships;
+
+    private String scriptToRun = null;
 
     public static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
@@ -143,6 +146,25 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
 
     @OnScheduled
     public void setup(final ProcessContext context) {
+
+        String scriptBody = context.getProperty(SCRIPT_BODY).getValue();
+        String scriptFile = context.getProperty(SCRIPT_FILE).getValue();
+
+        // Show line numbers
+        showLineNumbers = context.getProperty(SHOW_LINE_NUMBERS).asBoolean();
+
+        scriptToRun = scriptBody;
+
+        try {
+            if (scriptToRun == null && scriptFile != null) {
+                try (final FileInputStream scriptStream = new FileInputStream(scriptFile)) {
+                    scriptToRun = IOUtils.toString(scriptStream);
+                }
+            }
+        } catch (IOException ioe) {
+            throw new ProcessException(ioe);
+        }
+
         int maxTasks = context.getMaxConcurrentTasks();
         setupScriptingContainers(context, maxTasks);
     }
@@ -175,9 +197,6 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
             scriptingContainer.setHomeDirectory(jrubyHome);
         }
 
-        // Show line numbers
-        showLineNumbers = context.getProperty(SHOW_LINE_NUMBERS).asBoolean();
-
         // Add additional library paths
         String loadPath = context.getProperty(LOAD_PATHS).getValue();
         if (!StringUtils.isEmpty(loadPath)) {
@@ -203,6 +222,13 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
                 scriptingContainer.put("log", log);
                 scriptingContainer.put("REL_SUCCESS", REL_SUCCESS);
                 scriptingContainer.put("REL_FAILURE", REL_FAILURE);
+
+                if (showLineNumbers) {
+                    JavaEmbedUtils.EvalUnit unit = scriptingContainer.parse(scriptToRun, 1);
+                    unit.run();
+                } else {
+                    scriptingContainer.runScriptlet(scriptToRun);
+                }
 
                 session.commit();
             } catch (Exception e) {
