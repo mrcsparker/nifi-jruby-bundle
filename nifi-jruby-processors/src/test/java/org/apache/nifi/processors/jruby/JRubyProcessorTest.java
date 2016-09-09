@@ -16,12 +16,9 @@
  */
 package org.apache.nifi.processors.jruby;
 
-import org.apache.nifi.processor.exception.FlowFileAccessException;
-import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.jruby.embed.EvalFailedException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -90,8 +87,6 @@ public class JRubyProcessorTest {
     @Test
     public void testInputTransformation() {
 
-        System.out.println(rubyFile("/test_input_transformation.rb"));
-
         testRunner.setProperty(JRubyProcessor.SCRIPT_FILE, rubyFile("/test_input_transformation.rb"));
         testRunner.setProperty(JRubyProcessor.SHOW_LINE_NUMBERS, "true");
 
@@ -105,6 +100,21 @@ public class JRubyProcessorTest {
         MockFlowFile f = result.get(0);
 
         Assert.assertEquals("[{\"name\":\"foo\"},{\"value\":\"bar\"}]", new String(f.toByteArray(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void testLocalGems() {
+
+        testRunner.setProperty(JRubyProcessor.SCRIPT_FILE, rubyFile("/test_local_gems.rb"));
+        testRunner.setProperty(JRubyProcessor.GEM_PATHS, rubyFile("/gems"));
+
+        testRunner.assertValid();
+        testRunner.enqueue("test content".getBytes(StandardCharsets.UTF_8));
+        testRunner.run();
+
+        testRunner.assertAllFlowFilesTransferred("success", 1);
+        final List<MockFlowFile> result = testRunner.getFlowFilesForRelationship("success");
+        result.get(0).assertAttributeEquals("from-content", "{\"somearr\":[{\"name\":\"a\"},{\"name\":\"b\"}]}");
     }
 
 

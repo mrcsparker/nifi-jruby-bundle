@@ -21,7 +21,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.Validator;
-import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.*;
 import org.apache.nifi.annotation.behavior.ReadsAttribute;
@@ -40,11 +39,9 @@ import org.jruby.javasupport.JavaEmbedUtils;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Tags({"script", "execute", "jruby"})
 @CapabilityDescription("Execute a JRuby script using a flow file and a process session.")
@@ -106,9 +103,9 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
             .expressionLanguageSupported(false)
             .build();
 
-    public static final PropertyDescriptor LOAD_PATHS = new PropertyDescriptor.Builder()
-            .name("Additional load paths for ruby gems")
-            .description("Comma-separated list of paths to files and/or directories which contain libraries required by the script.")
+    public static final PropertyDescriptor GEM_PATHS = new PropertyDescriptor.Builder()
+            .name("Additional gem paths for ruby gems")
+            .description("Colon-separated list of paths to files and/or directories which contain libraries required by the script.")
             .required(false)
             .expressionLanguageSupported(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
@@ -123,7 +120,7 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
         descriptors.add(SCRIPT_BODY);
         descriptors.add(JRUBY_HOME);
         descriptors.add(SHOW_LINE_NUMBERS);
-        descriptors.add(LOAD_PATHS);
+        descriptors.add(GEM_PATHS);
         this.descriptors = Collections.unmodifiableList(descriptors);
 
         final Set<Relationship> relationships = new HashSet<Relationship>();
@@ -191,18 +188,29 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
     protected ScriptingContainer setupScriptingContainer(final ProcessContext context) {
         ScriptingContainer scriptingContainer = new ScriptingContainer(LocalVariableBehavior.PERSISTENT);
 
+        Map<String, String> env = new HashMap<>(scriptingContainer.getEnvironment());
+
         // Change JRUBY_HOME location
         String jrubyHome = context.getProperty(JRUBY_HOME).getValue();
         if (!StringUtils.isEmpty(jrubyHome)) {
             scriptingContainer.setHomeDirectory(jrubyHome);
         }
 
-        // Add additional library paths
-        String loadPath = context.getProperty(LOAD_PATHS).getValue();
-        if (!StringUtils.isEmpty(loadPath)) {
-            String loadPaths[] = loadPath.split(",");
-            scriptingContainer.setLoadPaths(Arrays.asList(loadPaths));
+        // Add additional gem paths
+        String gemPath = context.getProperty(GEM_PATHS).getValue();
+        if (!StringUtils.isEmpty(gemPath)) {
+            String oldGemPath = env.get("GEM_PATH");
+            String newGemPath;
+            if (oldGemPath != null) {
+                newGemPath = oldGemPath + ":" + gemPath;
+            } else {
+                newGemPath = gemPath;
+            }
+            System.out.println(newGemPath);
+            env.put("GEM_PATH", newGemPath);
         }
+
+        scriptingContainer.setEnvironment(env);
 
         return scriptingContainer;
     }

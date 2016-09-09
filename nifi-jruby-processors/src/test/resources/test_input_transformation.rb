@@ -9,10 +9,10 @@ class Transform
   end
 
   def process(in_stream, out_stream)
+
     buffer = IOUtils.toString(in_stream)
 
     o = parse(buffer)
-
     out_stream.write(o.to_java_bytes)
   end
 
@@ -33,6 +33,8 @@ begin
   output = session.write(input, Transform.new)
   session.transfer(output, REL_SUCCESS)
 rescue Exception => e
+  puts e.message
+  print e.backtrace.join("\n")
   input = session.putAttribute(input, "error", e.to_s)
   session.transfer(input, REL_FAILURE)
 end
