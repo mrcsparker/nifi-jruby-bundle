@@ -16,17 +16,23 @@
  */
 package org.apache.nifi.processors.jruby;
 
-import org.apache.commons.io.IOUtils;
+import org.apache.nifi.processor.exception.FlowFileAccessException;
+import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
+import org.jruby.embed.EvalFailedException;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.logging.Logger;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.endsWith;
+import static org.junit.Assert.assertThat;
 
 
 public class JRubyProcessorTest {
@@ -64,6 +70,41 @@ public class JRubyProcessorTest {
         testRunner.assertAllFlowFilesTransferred("success", 1);
         final List<MockFlowFile> result = testRunner.getFlowFilesForRelationship("success");
         result.get(0).assertAttributeEquals("from-content", "Hello world");
+    }
+
+    @Test
+    public void testLineNumbersScript() {
+
+        testRunner.setProperty(JRubyProcessor.SCRIPT_FILE, rubyFile("/test_line_numbers.rb"));
+        testRunner.setProperty(JRubyProcessor.SHOW_LINE_NUMBERS, "true");
+
+        testRunner.assertValid();
+        testRunner.enqueue("test content".getBytes(StandardCharsets.UTF_8));
+        try {
+            testRunner.run();
+        } catch(AssertionError e) {
+            assertThat(e.getMessage(), endsWith("(NameError) undefined local variable or method `x' for main:Object"));
+        }
+    }
+
+    @Test
+    public void testInputTransformation() {
+
+        System.out.println(rubyFile("/test_input_transformation.rb"));
+
+        testRunner.setProperty(JRubyProcessor.SCRIPT_FILE, rubyFile("/test_input_transformation.rb"));
+        testRunner.setProperty(JRubyProcessor.SHOW_LINE_NUMBERS, "true");
+
+        testRunner.assertValid();
+        testRunner.enqueue("name=foo;value=bar".getBytes(StandardCharsets.UTF_8));
+
+        testRunner.run();
+
+        testRunner.assertAllFlowFilesTransferred("success", 1);
+        final List<MockFlowFile> result = testRunner.getFlowFilesForRelationship("success");
+        MockFlowFile f = result.get(0);
+
+        Assert.assertEquals("[{\"name\":\"foo\"},{\"value\":\"bar\"}]", new String(f.toByteArray(), StandardCharsets.UTF_8));
     }
 
 
