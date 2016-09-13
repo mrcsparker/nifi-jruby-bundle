@@ -215,10 +215,6 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
 
             scriptingContainer.runScriptlet("ENV['GEM_HOME']='" + newGemPath + "'");
             scriptingContainer.runScriptlet("ENV['GEM_PATH']='" + newGemPath + "'");
-
-            getLogger().warn(newGemPath);
-
-            getLogger().warn(env.toString());
         }
 
         scriptingContainer.setEnvironment(env);
