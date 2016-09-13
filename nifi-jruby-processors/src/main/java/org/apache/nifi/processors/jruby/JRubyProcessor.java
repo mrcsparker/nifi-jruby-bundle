@@ -37,8 +37,10 @@ import org.jruby.embed.LocalVariableBehavior;
 import org.jruby.embed.ScriptingContainer;
 import org.jruby.javasupport.JavaEmbedUtils;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -188,6 +190,7 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
     protected ScriptingContainer setupScriptingContainer(final ProcessContext context) {
         ScriptingContainer scriptingContainer = new ScriptingContainer(LocalVariableBehavior.PERSISTENT);
 
+        @SuppressWarnings("unchecked")
         Map<String, String> env = new HashMap<>(scriptingContainer.getEnvironment());
 
         // Change JRUBY_HOME location
@@ -206,8 +209,16 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
             } else {
                 newGemPath = gemPath;
             }
-            System.out.println(newGemPath);
+
             env.put("GEM_PATH", newGemPath);
+            env.put("GEM_HOME", newGemPath);
+
+            scriptingContainer.runScriptlet("ENV['GEM_HOME']='" + newGemPath + "'");
+            scriptingContainer.runScriptlet("ENV['GEM_PATH']='" + newGemPath + "'");
+
+            getLogger().warn(newGemPath);
+
+            getLogger().warn(env.toString());
         }
 
         scriptingContainer.setEnvironment(env);

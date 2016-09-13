@@ -27,7 +27,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.logging.Logger;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.endsWith;
 import static org.junit.Assert.assertThat;
 
@@ -110,6 +109,7 @@ public class JRubyProcessorTest {
 
         testRunner.assertValid();
         testRunner.enqueue("test content".getBytes(StandardCharsets.UTF_8));
+
         testRunner.run();
 
         testRunner.assertAllFlowFilesTransferred("success", 1);
