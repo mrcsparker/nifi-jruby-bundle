@@ -1,15 +1,19 @@
 java_import org.apache.commons.io.IOUtils
 java_import java.nio.charset.StandardCharsets
 
+java_import org.apache.nifi.processor.io.StreamCallback
+
 require 'json'
 
 class Transform
+
+  include StreamCallback
+
   def initialize
     @buffer = ''
   end
 
   def process(in_stream, out_stream)
-
     buffer = IOUtils.toString(in_stream)
 
     o = parse(buffer)
@@ -28,6 +32,7 @@ if flow_file.nil?
 end
 
 input = session.putAttribute(flow_file, "read", flow_file.size.to_s)
+
 
 begin
   output = session.write(input, Transform.new)
