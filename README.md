@@ -30,6 +30,7 @@ java_import org.apache.commons.io.IOUtils
 java_import java.nio.charset.StandardCharsets
 
 java_import org.apache.nifi.processor.io.StreamCallback
+java_import org.apache.nifi.processors.jruby.JRubyProcessor
 
 require 'json'
 
@@ -64,12 +65,12 @@ input = session.putAttribute(flow_file, "read", flow_file.size.to_s)
 
 begin
   output = session.write(input, Transform.new)
-  session.transfer(output, REL_SUCCESS)
+  session.transfer(output, JRubyProcessor::REL_SUCCESS)
 rescue Exception => e
   puts e.message
   print e.backtrace.join("\n")
   input = session.putAttribute(input, "error", e.to_s)
-  session.transfer(input, REL_FAILURE)
+  session.transfer(input, JRubyProcessor::REL_FAILURE)
 end
 ```
 
