@@ -117,6 +117,19 @@ public class JRubyProcessorTest {
         result.get(0).assertAttributeEquals("from-content", "{\"somearr\":[{\"name\":\"a\"},{\"name\":\"b\"}]}");
     }
 
+    @Test
+    public void testLocalRequire() {
+        testRunner.setProperty(JRubyProcessor.SCRIPT_FILE, rubyFile("/test_local_require.rb"));
+
+        testRunner.assertValid();
+        testRunner.enqueue("test content".getBytes(StandardCharsets.UTF_8));
+        testRunner.run();
+
+        testRunner.assertAllFlowFilesTransferred("success", 1);
+        final List<MockFlowFile> result = testRunner.getFlowFilesForRelationship("success");
+        result.get(0).assertAttributeEquals("from-content", "Hello world: this number is 3");
+    }
+
 
     private String rubyFile(String fileName) {
         return this.getClass().getResource(fileName).getPath();

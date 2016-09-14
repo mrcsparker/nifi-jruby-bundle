@@ -37,10 +37,8 @@ import org.jruby.embed.LocalVariableBehavior;
 import org.jruby.embed.ScriptingContainer;
 import org.jruby.javasupport.JavaEmbedUtils;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -116,7 +114,7 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
 
     @Override
     protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> descriptors = new ArrayList<PropertyDescriptor>();
+        final List<PropertyDescriptor> descriptors = new ArrayList<>();
 
         descriptors.add(SCRIPT_FILE);
         descriptors.add(SCRIPT_BODY);
@@ -125,7 +123,7 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
         descriptors.add(GEM_PATHS);
         this.descriptors = Collections.unmodifiableList(descriptors);
 
-        final Set<Relationship> relationships = new HashSet<Relationship>();
+        final Set<Relationship> relationships = new HashSet<>();
         relationships.add(REL_FAILURE);
         relationships.add(REL_SUCCESS);
         this.relationships = Collections.unmodifiableSet(relationships);
@@ -237,6 +235,8 @@ public class JRubyProcessor extends AbstractSessionFactoryProcessor {
                 scriptingContainer.put("log", log);
                 scriptingContainer.put("REL_SUCCESS", REL_SUCCESS);
                 scriptingContainer.put("REL_FAILURE", REL_FAILURE);
+
+
 
                 if (showLineNumbers) {
                     JavaEmbedUtils.EvalUnit unit = scriptingContainer.parse(scriptToRun, 1);
